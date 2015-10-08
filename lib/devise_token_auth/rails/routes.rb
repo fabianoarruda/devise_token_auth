@@ -52,6 +52,9 @@ module ActionDispatch::Routing
             match "#{full_path}/failure",             controller: omniauth_ctrl, action: "omniauth_failure", via: [:get]
             match "#{full_path}/:provider/callback",  controller: omniauth_ctrl, action: "omniauth_success", via: [:get]
 
+            #custom route cargree
+            match "#{full_path}/:provider/app_callback",  controller: omniauth_ctrl, action: "app_callback", via: [:post]
+
             match "#{DeviseTokenAuth.omniauth_prefix}/:provider/callback", controller: omniauth_ctrl, action: "redirect_callbacks", via: [:get]
             match "#{DeviseTokenAuth.omniauth_prefix}/failure", controller: omniauth_ctrl, action: "omniauth_failure", via: [:get]
 

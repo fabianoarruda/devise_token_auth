@@ -3,7 +3,7 @@ module DeviseTokenAuth
 
     attr_reader :auth_params
     skip_before_filter :set_user_by_token
-    skip_after_filter :update_auth_header
+    skip_after_filter :update_auth_header, :except => [:app_callback]
 
     # intermediary route for successful omniauth authentication. omniauth does
     # not support multiple models, so we must resort to this terrible hack.
@@ -45,6 +45,26 @@ module DeviseTokenAuth
     def omniauth_failure
       @error = params[:message]
       render_data_or_redirect('authFailure', {error: @error})
+    end
+
+    def app_callback
+      get_resource_from_facebook_app
+      create_token_info
+      set_token_on_resource
+      create_auth_params
+
+      if resource_class.devise_modules.include?(:confirmable)
+        # don't send confirmation email!!!
+        @resource.skip_confirmation!
+      end
+
+      sign_in(:user, @resource, store: false, bypass: false)
+
+      @resource.save!
+
+      yield if block_given?
+
+      render_data_or_redirect('deliverCredentials', @auth_params.as_json, @resource.as_json)
     end
 
     protected
@@ -103,7 +123,9 @@ module DeviseTokenAuth
       elsif params['resource_class']
         params['resource_class'].constantize
       else
-        raise "No resource_class found"
+        #raise "No resource_class found"
+        # cargree customization
+        'User'.constantize
       end
     end
 
@@ -213,7 +235,8 @@ module DeviseTokenAuth
         # like coming straight to this url or refreshing the page at the wrong time, there may not be one.
         # In that case, just render in plain text the error message if there is one or otherwise 
         # a generic message.
-        fallback_render data[:error] || 'An error occurred'
+        #fallback_render data[:error] || 'An error occurred'
+        render_data(message, user_data.merge(data))
       end
     end
 
@@ -249,6 +272,31 @@ module DeviseTokenAuth
 
       @resource
     end
+
+    # Custom function for cargree.
+
+    def get_resource_from_facebook_app
+      @resource = resource_class.where({
+                                           uid:      params[:userid],
+                                           provider: 'facebook',
+                                       }).first_or_initialize
+
+      if @resource.new_record?
+        @oauth_registration = true
+        set_random_password
+      end
+
+      @resource.assign_attributes({
+                                      name:  params[:name],
+                                      email: params[:email]
+                                  } )
+      @resource
+    end
+
+    def render_app_auth_success
+      render json: {data: @resource.token_validation_response}
+    end
+
 
   end
 end
