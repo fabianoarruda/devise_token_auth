@@ -2,7 +2,7 @@ module DeviseTokenAuth
   class OmniauthCallbacksController < DeviseTokenAuth::ApplicationController
 
     attr_reader :auth_params
-    skip_before_filter :set_user_by_token
+    skip_before_filter :set_user_by_token, :except => [:app_callback]
     skip_after_filter :update_auth_header, :except => [:app_callback]
 
     # intermediary route for successful omniauth authentication. omniauth does
@@ -60,11 +60,13 @@ module DeviseTokenAuth
 
       sign_in(:user, @resource, store: false, bypass: false)
 
-      @resource.save!
+      @resource.save
 
       yield if block_given?
 
-      render_data_or_redirect('deliverCredentials', @auth_params.as_json, @resource.as_json)
+      render_json_response
+      #render_data(@auth_params.as_json, @resource.as_json)
+      #render_data_or_redirect('deliverCredentials', @auth_params.as_json, @resource.as_json)
     end
 
     protected
@@ -212,6 +214,12 @@ module DeviseTokenAuth
       render :layout => nil, :template => "devise_token_auth/omniauth_external_window"
     end
 
+    def render_json_response
+      render json: {
+                 data: @resource.token_validation_response
+             }
+    end
+
     def render_data_or_redirect(message, data, user_data = {})
 
       # We handle inAppBrowser and newWindow the same, but it is nice
@@ -284,12 +292,15 @@ module DeviseTokenAuth
       if @resource.new_record?
         @oauth_registration = true
         set_random_password
+
+
       end
 
       @resource.assign_attributes({
                                       name:  params[:name],
                                       email: params[:email]
                                   } )
+
       @resource
     end
 
