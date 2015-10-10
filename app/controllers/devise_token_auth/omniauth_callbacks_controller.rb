@@ -48,25 +48,27 @@ module DeviseTokenAuth
     end
 
     def app_callback
-      get_resource_from_facebook_app
-      create_token_info
-      set_token_on_resource
-      create_auth_params
+      unless get_resource_from_facebook_app.nil?
+        create_token_info
+        set_token_on_resource
+        create_auth_params
 
-      if resource_class.devise_modules.include?(:confirmable)
-        # don't send confirmation email!!!
-        @resource.skip_confirmation!
+        if resource_class.devise_modules.include?(:confirmable)
+          # don't send confirmation email!!!
+          @resource.skip_confirmation!
+        end
+
+        sign_in(:user, @resource, store: false, bypass: false)
+
+        @resource.save
+
+        yield if block_given?
+
+        render_app_auth_success
+        #render_data(@auth_params.as_json, @resource.as_json)
+        #render_data_or_redirect('deliverCredentials', @auth_params.as_json, @resource.as_json)
       end
 
-      sign_in(:user, @resource, store: false, bypass: false)
-
-      @resource.save
-
-      yield if block_given?
-
-      render_json_response
-      #render_data(@auth_params.as_json, @resource.as_json)
-      #render_data_or_redirect('deliverCredentials', @auth_params.as_json, @resource.as_json)
     end
 
     protected
@@ -214,12 +216,6 @@ module DeviseTokenAuth
       render :layout => nil, :template => "devise_token_auth/omniauth_external_window"
     end
 
-    def render_json_response
-      render json: {
-                 data: @resource.token_validation_response
-             }
-    end
-
     def render_data_or_redirect(message, data, user_data = {})
 
       # We handle inAppBrowser and newWindow the same, but it is nice
@@ -284,28 +280,50 @@ module DeviseTokenAuth
     # Custom function for cargree.
 
     def get_resource_from_facebook_app
-      @resource = resource_class.where({
-                                           uid:      params[:userid],
-                                           provider: 'facebook',
-                                       }).first_or_initialize
 
-      if @resource.new_record?
-        @oauth_registration = true
-        set_random_password
+      my_user =  resource_class.where({
+                                        email: params[:email],
+                                        provider: 'email'
+                                      }).take
+
+      if my_user
+        render_app_auth_failure(params[:email])
+        nil
+
+      else
+        @resource = resource_class.where({
+                                             uid:      params[:userid],
+                                             provider: 'facebook',
+                                         }).first_or_initialize
+
+        if @resource.new_record?
+          @oauth_registration = true
+          set_random_password
 
 
+        end
+
+        @resource.assign_attributes({
+                                        name:  params[:name],
+                                        email: params[:email]
+                                    } )
+
+        @resource
       end
 
-      @resource.assign_attributes({
-                                      name:  params[:name],
-                                      email: params[:email]
-                                  } )
 
-      @resource
     end
 
     def render_app_auth_success
       render json: {data: @resource.token_validation_response}
+    end
+
+    def render_app_auth_failure(data)
+      render json: {
+                 status: 'error',
+                 data:   @resource.as_json,
+                 errors: [I18n.t("devise_token_auth.registrations.email_already_exists", email: data)]
+             }, status: 403
     end
 
 
